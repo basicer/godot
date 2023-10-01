@@ -1686,6 +1686,13 @@ void ResourceImporterScene::get_internal_import_options(InternalImportCategory p
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "decomposition/max_convex_hulls", PROPERTY_HINT_RANGE, "1,100,1", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), decomposition_default->get_max_convex_hulls()));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "decomposition/project_hull_vertices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), decomposition_default->get_project_hull_vertices()));
 
+			Ref<MeshSimplificationSettings> simplify_default = Ref<MeshSimplificationSettings>();
+			simplify_default.instantiate();
+			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "simplification/enabled", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), false));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "simplification/sloppy", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), simplify_default->get_sloppy()));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "simplification/target_error", PROPERTY_HINT_RANGE, "0.0,1.0,0.001", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), simplify_default->get_target_error()));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "simplification/target_vertex_reduction", PROPERTY_HINT_RANGE, "0.0,1.0,0.001", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), simplify_default->get_target_vertex_reduction()));
+
 			// Primitives: Box, Sphere, Cylinder, Capsule.
 			r_options->push_back(ImportOption(PropertyInfo(Variant::VECTOR3, "primitive/size", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), Vector3(2.0, 2.0, 2.0)));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "primitive/height", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), 1.0));
@@ -1790,6 +1797,16 @@ bool ResourceImporterScene::get_internal_option_visibility(InternalImportCategor
 				}
 
 				return false;
+			}
+
+			if (p_option.find("simplification/") >= 0) {
+				if (!generate_physics || p_options["physics/shape_type"] != Variant(SHAPE_TYPE_TRIMESH)) {
+					return false;
+				}
+				if (p_option == "simplification/enabled") {
+					return true;
+				}
+				return p_options.has("simplification/enabled") && p_options["simplification/enabled"].operator bool();
 			}
 
 			if (p_option == "primitive/position" || p_option == "primitive/rotation") {
