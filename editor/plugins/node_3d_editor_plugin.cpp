@@ -3498,6 +3498,7 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 		case VIEW_DISPLAY_UNSHADED:
 		case VIEW_DISPLAY_LIGHTING:
 		case VIEW_DISPLAY_NORMAL_BUFFER:
+		case VIEW_DISPLAY_DEPTH_BUFFER:
 		case VIEW_DISPLAY_DEBUG_SHADOW_ATLAS:
 		case VIEW_DISPLAY_DEBUG_DIRECTIONAL_SHADOW_ATLAS:
 		case VIEW_DISPLAY_DEBUG_VOXEL_GI_ALBEDO:
@@ -3526,6 +3527,7 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				VIEW_DISPLAY_UNSHADED,
 				VIEW_DISPLAY_LIGHTING,
 				VIEW_DISPLAY_NORMAL_BUFFER,
+				VIEW_DISPLAY_DEPTH_BUFFER,
 				VIEW_DISPLAY_DEBUG_SHADOW_ATLAS,
 				VIEW_DISPLAY_DEBUG_DIRECTIONAL_SHADOW_ATLAS,
 				VIEW_DISPLAY_DEBUG_VOXEL_GI_ALBEDO,
@@ -3556,6 +3558,7 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				Viewport::DEBUG_DRAW_UNSHADED,
 				Viewport::DEBUG_DRAW_LIGHTING,
 				Viewport::DEBUG_DRAW_NORMAL_BUFFER,
+				Viewport::DEBUG_DRAW_DEPTH_BUFFER,
 				Viewport::DEBUG_DRAW_SHADOW_ATLAS,
 				Viewport::DEBUG_DRAW_DIRECTIONAL_SHADOW_ATLAS,
 				Viewport::DEBUG_DRAW_VOXEL_GI_ALBEDO,
@@ -5136,6 +5139,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	display_submenu->add_radio_check_item(TTR("Directional Shadow Splits"), VIEW_DISPLAY_DEBUG_PSSM_SPLITS);
 	display_submenu->add_separator();
 	display_submenu->add_radio_check_item(TTR("Normal Buffer"), VIEW_DISPLAY_NORMAL_BUFFER);
+	display_submenu->add_radio_check_item(TTR("Depth Buffer"), VIEW_DISPLAY_DEPTH_BUFFER);
 	display_submenu->add_separator();
 	display_submenu->add_radio_check_item(TTR("Shadow Atlas"), VIEW_DISPLAY_DEBUG_SHADOW_ATLAS);
 	display_submenu->add_radio_check_item(TTR("Directional Shadow Map"), VIEW_DISPLAY_DEBUG_DIRECTIONAL_SHADOW_ATLAS);

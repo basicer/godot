@@ -843,6 +843,11 @@ void RendererSceneRenderRD::_render_buffers_debug_draw(const RenderDataRD *p_ren
 		copy_effects->copy_to_fb_rect(_render_buffers_get_normal_texture(rb), texture_storage->render_target_get_rd_framebuffer(render_target), Rect2(Vector2(), rtsize), false, false, false, false, RID(), false, false, false, true);
 	}
 
+	if (debug_draw == RS::VIEWPORT_DEBUG_DRAW_DEPTH_BUFFER && rb->get_depth_texture().is_valid()) {
+		Size2 rtsize = texture_storage->render_target_get_size(render_target);
+		copy_effects->copy_to_fb_rect(rb->get_depth_texture(), texture_storage->render_target_get_rd_framebuffer(render_target), Rect2(Vector2(), rtsize), false, false, false, false, RID(), false, false, false, true);
+	}
+
 	if (debug_draw == RS::VIEWPORT_DEBUG_DRAW_OCCLUDERS) {
 		if (p_render_data->occluder_debug_tex.is_valid()) {
 			Size2i rtsize = texture_storage->render_target_get_size(render_target);
