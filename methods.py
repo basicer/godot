@@ -214,6 +214,7 @@ def get_version_info(module_version_string="", silent=False):
         "module_config": str(version.module_config) + module_version_string,
         "website": str(version.website),
         "docs_branch": str(version.docs),
+        "mirrors_url": str(version.mirrors_url),
     }
 
     # For dev snapshots (alpha, beta, RC, etc.) we do not commit status change to Git,
@@ -222,6 +223,9 @@ def get_version_info(module_version_string="", silent=False):
         version_info["status"] = str(os.getenv("GODOT_VERSION_STATUS"))
         if not silent:
             print(f"Using version status '{version_info['status']}', overriding the original '{version.status}'.")
+
+    if os.getenv("GODOT_VERSION_MIRRORS_URL"):
+        version_info["mirrors_url"] = str(os.getenv("GODOT_VERSION_MIRRORS_URL"))
 
     # Parse Git hash if we're in a Git repo.
     githash = ""

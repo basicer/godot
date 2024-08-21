@@ -6,4 +6,5 @@ patch = 0
 status = "dev"
 module_config = ""
 website = "https://godotengine.org"
+mirrors_url = "https://godotengine.org/mirrorlist/"
 docs = "latest"
