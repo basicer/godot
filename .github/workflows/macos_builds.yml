@@ -58,8 +58,8 @@ jobs:
           platform: macos
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
-          secrets:
-            SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.SCRIPT_AES256_ENCRYPTION_KEY }}
+        secrets:
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.SCRIPT_AES256_ENCRYPTION_KEY }}
 
       - name: Compilation (arm64)
         uses: ./.github/actions/godot-build
@@ -68,8 +68,8 @@ jobs:
           platform: macos
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
-          secrets:
-            SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.SCRIPT_AES256_ENCRYPTION_KEY }}
+        secrets:
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.SCRIPT_AES256_ENCRYPTION_KEY }}
 
       - name: Save Godot build cache
         uses: ./.github/actions/godot-cache-save
