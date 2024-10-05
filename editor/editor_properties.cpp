@@ -81,7 +81,6 @@ void EditorPropertyText::_text_submitted(const String &p_string) {
 	}
 
 	if (text->has_focus()) {
-		text->release_focus();
 		_text_changed(p_string);
 	}
 }
@@ -688,15 +687,20 @@ void EditorPropertyEnum::update_property() {
 
 void EditorPropertyEnum::setup(const Vector<String> &p_options) {
 	options->clear();
+	HashMap<int64_t, Vector<String>> items;
 	int64_t current_val = 0;
-	for (int i = 0; i < p_options.size(); i++) {
-		Vector<String> text_split = p_options[i].split(":");
+	for (const String &option : p_options) {
+		Vector<String> text_split = option.split(":");
 		if (text_split.size() != 1) {
 			current_val = text_split[1].to_int();
 		}
-		options->add_item(text_split[0]);
-		options->set_item_metadata(i, current_val);
+		items[current_val].push_back(text_split[0]);
 		current_val += 1;
+	}
+
+	for (const KeyValue<int64_t, Vector<String>> &K : items) {
+		options->add_item(String(", ").join(K.value));
+		options->set_item_metadata(-1, K.key);
 	}
 }
 
@@ -2703,7 +2707,11 @@ void EditorPropertyNodePath::_update_menu() {
 void EditorPropertyNodePath::_menu_option(int p_idx) {
 	switch (p_idx) {
 		case ACTION_CLEAR: {
-			emit_changed(get_edited_property(), NodePath());
+			if (editing_node) {
+				emit_changed(get_edited_property(), Variant());
+			} else {
+				emit_changed(get_edited_property(), NodePath());
+			}
 			update_property();
 		} break;
 
@@ -3238,7 +3246,10 @@ void EditorPropertyResource::update_property() {
 				sub_inspector->set_vertical_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 				sub_inspector->set_use_doc_hints(true);
 
-				sub_inspector->set_sub_inspector(true);
+				EditorInspector *parent_inspector = get_parent_inspector();
+				ERR_FAIL_NULL(parent_inspector);
+				sub_inspector->set_root_inspector(parent_inspector->get_root_inspector());
+
 				sub_inspector->set_property_name_style(InspectorDock::get_singleton()->get_property_name_style());
 
 				sub_inspector->connect("property_keyed", callable_mp(this, &EditorPropertyResource::_sub_inspector_property_keyed));

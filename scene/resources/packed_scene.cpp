@@ -527,7 +527,7 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 
 			bool valid;
 			Array array = dnp.base->get(dnp.property, &valid);
-			ERR_CONTINUE(!valid);
+			ERR_CONTINUE_EDMSG(!valid, vformat("Failed to get property '%s' from node '%s'.", dnp.property, dnp.base->get_name()));
 			array = array.duplicate();
 
 			array.resize(paths.size());
@@ -540,7 +540,7 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 
 			bool valid;
 			Dictionary dict = dnp.base->get(dnp.property, &valid);
-			ERR_CONTINUE(!valid);
+			ERR_CONTINUE_EDMSG(!valid, vformat("Failed to get property '%s' from node '%s'.", dnp.property, dnp.base->get_name()));
 			dict = dict.duplicate();
 			bool convert_key = dict.get_typed_key_builtin() == Variant::OBJECT &&
 					ClassDB::is_parent_class(dict.get_typed_key_class_name(), "Node");
@@ -1352,25 +1352,6 @@ Ref<SceneState> SceneState::get_base_scene_state() const {
 	}
 
 	return Ref<SceneState>();
-}
-
-void SceneState::update_instance_resource(String p_path, Ref<PackedScene> p_packed_scene) {
-	ERR_FAIL_COND(p_packed_scene.is_null());
-
-	for (const NodeData &nd : nodes) {
-		if (nd.instance >= 0) {
-			if (!(nd.instance & FLAG_INSTANCE_IS_PLACEHOLDER)) {
-				int instance_id = nd.instance & FLAG_MASK;
-				Ref<PackedScene> original_packed_scene = variants[instance_id];
-				if (original_packed_scene.is_valid()) {
-					if (original_packed_scene->get_path() == p_path) {
-						variants.remove_at(instance_id);
-						variants.insert(instance_id, p_packed_scene);
-					}
-				}
-			}
-		}
-	}
 }
 
 int SceneState::find_node_by_path(const NodePath &p_node) const {

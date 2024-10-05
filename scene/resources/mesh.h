@@ -43,6 +43,7 @@
 class ConcavePolygonShape3D;
 class ConvexPolygonShape3D;
 class MeshConvexDecompositionSettings;
+class MeshSimplificationSettings;
 class Shape3D;
 
 class Mesh : public Resource {
@@ -68,20 +69,20 @@ public:
 protected:
 	static void _bind_methods();
 
-	GDVIRTUAL0RC(int, _get_surface_count)
-	GDVIRTUAL1RC(int, _surface_get_array_len, int)
-	GDVIRTUAL1RC(int, _surface_get_array_index_len, int)
-	GDVIRTUAL1RC(Array, _surface_get_arrays, int)
-	GDVIRTUAL1RC(TypedArray<Array>, _surface_get_blend_shape_arrays, int)
-	GDVIRTUAL1RC(Dictionary, _surface_get_lods, int)
-	GDVIRTUAL1RC(uint32_t, _surface_get_format, int)
-	GDVIRTUAL1RC(uint32_t, _surface_get_primitive_type, int)
-	GDVIRTUAL2(_surface_set_material, int, Ref<Material>)
-	GDVIRTUAL1RC(Ref<Material>, _surface_get_material, int)
-	GDVIRTUAL0RC(int, _get_blend_shape_count)
-	GDVIRTUAL1RC(StringName, _get_blend_shape_name, int)
-	GDVIRTUAL2(_set_blend_shape_name, int, StringName)
-	GDVIRTUAL0RC(AABB, _get_aabb)
+	GDVIRTUAL0RC_REQUIRED(int, _get_surface_count)
+	GDVIRTUAL1RC_REQUIRED(int, _surface_get_array_len, int)
+	GDVIRTUAL1RC_REQUIRED(int, _surface_get_array_index_len, int)
+	GDVIRTUAL1RC_REQUIRED(Array, _surface_get_arrays, int)
+	GDVIRTUAL1RC_REQUIRED(TypedArray<Array>, _surface_get_blend_shape_arrays, int)
+	GDVIRTUAL1RC_REQUIRED(Dictionary, _surface_get_lods, int)
+	GDVIRTUAL1RC_REQUIRED(uint32_t, _surface_get_format, int)
+	GDVIRTUAL1RC_REQUIRED(uint32_t, _surface_get_primitive_type, int)
+	GDVIRTUAL2_REQUIRED(_surface_set_material, int, Ref<Material>)
+	GDVIRTUAL1RC_REQUIRED(Ref<Material>, _surface_get_material, int)
+	GDVIRTUAL0RC_REQUIRED(int, _get_blend_shape_count)
+	GDVIRTUAL1RC_REQUIRED(StringName, _get_blend_shape_name, int)
+	GDVIRTUAL2_REQUIRED(_set_blend_shape_name, int, StringName)
+	GDVIRTUAL0RC_REQUIRED(AABB, _get_aabb)
 
 public:
 	enum {
@@ -208,6 +209,28 @@ public:
 	virtual Ref<Resource> create_placeholder() const;
 
 	Mesh();
+};
+
+class MeshSimplificationSettings : public RefCounted {
+	GDCLASS(MeshSimplificationSettings, RefCounted);
+
+private:
+	bool sloppy = true;
+	real_t target_error = 0.01;
+	real_t target_vertex_reduction = 0.2;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_sloppy(bool p_sloppy);
+	bool get_sloppy() const;
+
+	void set_target_error(real_t p_target_error);
+	real_t get_target_error() const;
+
+	void set_target_vertex_reduction(real_t p_target_vector_reduction);
+	real_t get_target_vertex_reduction() const;
 };
 
 class MeshConvexDecompositionSettings : public RefCounted {

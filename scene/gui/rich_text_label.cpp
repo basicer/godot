@@ -333,6 +333,8 @@ void RichTextLabel::_update_line_font(ItemFrame *p_frame, int p_line, const Ref<
 				font_size = font_size_it->font_size;
 			}
 			TS->shaped_set_span_update_font(t, i, font->get_rids(), font_size, font->get_opentype_features());
+		} else {
+			TS->shaped_set_span_update_font(t, i, p_base_font->get_rids(), p_base_font_size, p_base_font->get_opentype_features());
 		}
 	}
 
@@ -2065,16 +2067,27 @@ void RichTextLabel::gui_input(const Ref<InputEvent> &p_event) {
 			}
 		}
 
+		bool scroll_value_modified = false;
+		double prev_scroll = vscroll->get_value();
+
 		if (b->get_button_index() == MouseButton::WHEEL_UP) {
 			if (scroll_active) {
 				vscroll->scroll(-vscroll->get_page() * b->get_factor() * 0.5 / 8);
+				scroll_value_modified = true;
 			}
 		}
 		if (b->get_button_index() == MouseButton::WHEEL_DOWN) {
 			if (scroll_active) {
 				vscroll->scroll(vscroll->get_page() * b->get_factor() * 0.5 / 8);
+				scroll_value_modified = true;
 			}
 		}
+
+		if (scroll_value_modified && vscroll->get_value() != prev_scroll) {
+			accept_event();
+			return;
+		}
+
 		if (b->get_button_index() == MouseButton::RIGHT && context_menu_enabled) {
 			_update_context_menu();
 			menu->set_position(get_screen_position() + b->get_position());
@@ -3412,6 +3425,21 @@ bool RichTextLabel::remove_paragraph(int p_paragraph, bool p_no_invalidate) {
 	selection.click_item = nullptr;
 	selection.active = false;
 
+	if (is_processing_internal()) {
+		bool process_enabled = false;
+		Item *it = main;
+		while (it) {
+			Vector<ItemFX *> fx_stack;
+			_fetch_item_fx_stack(it, fx_stack);
+			if (fx_stack.size()) {
+				process_enabled = true;
+				break;
+			}
+			it = _get_next_item(it, true);
+		}
+		set_process_internal(process_enabled);
+	}
+
 	if (p_no_invalidate) {
 		// Do not invalidate cache, only update vertical offsets of the paragraphs after deleted one and scrollbar.
 		int to_line = main->first_invalid_line.load() - 1;
@@ -3985,6 +4013,7 @@ void RichTextLabel::pop_all() {
 
 void RichTextLabel::clear() {
 	_stop_thread();
+	set_process_internal(false);
 	MutexLock data_lock(data_mutex);
 
 	main->_clear_children();
@@ -4176,8 +4205,6 @@ void RichTextLabel::append_text(const String &p_bbcode) {
 	bool in_italics = false;
 	bool after_list_open_tag = false;
 	bool after_list_close_tag = false;
-
-	set_process_internal(false);
 
 	while (pos <= p_bbcode.length()) {
 		int brk_pos = p_bbcode.find_char('[', pos);
@@ -5253,17 +5280,6 @@ void RichTextLabel::append_text(const String &p_bbcode) {
 			}
 		}
 	}
-
-	Vector<ItemFX *> fx_items;
-	for (Item *E : main->subitems) {
-		Item *subitem = static_cast<Item *>(E);
-		_fetch_item_fx_stack(subitem, fx_items);
-
-		if (fx_items.size()) {
-			set_process_internal(true);
-			break;
-		}
-	}
 }
 
 void RichTextLabel::scroll_to_selection() {
@@ -5426,6 +5442,7 @@ Variant RichTextLabel::get_drag_data(const Point2 &p_point) {
 		String t = get_selected_text();
 		Label *l = memnew(Label);
 		l->set_text(t);
+		l->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED); // Text is already translated.
 		set_drag_preview(l);
 		return t;
 	}

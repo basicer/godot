@@ -33,12 +33,12 @@
 #include "editor/audio_stream_preview.h"
 #include "editor/editor_help.h"
 #include "editor/editor_node.h"
-#include "editor/editor_quick_open.h"
 #include "editor/editor_resource_preview.h"
 #include "editor/editor_settings.h"
 #include "editor/editor_string_names.h"
 #include "editor/filesystem_dock.h"
 #include "editor/gui/editor_file_dialog.h"
+#include "editor/gui/editor_quick_open_dialog.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
 #include "editor/plugins/script_editor_plugin.h"
 #include "editor/scene_tree_dock.h"
@@ -171,10 +171,6 @@ void EditorResourcePicker::_file_selected(const String &p_path) {
 	_update_resource();
 }
 
-void EditorResourcePicker::_file_quick_selected() {
-	_file_selected(quick_open->get_selected());
-}
-
 void EditorResourcePicker::_resource_saved(Object *p_resource) {
 	if (edited_resource.is_valid() && p_resource == edited_resource.ptr()) {
 		emit_signal(SNAME("resource_changed"), edited_resource);
@@ -286,20 +282,22 @@ void EditorResourcePicker::_update_menu_items() {
 
 	// Add options to convert existing resource to another type of resource.
 	if (is_editable() && edited_resource.is_valid()) {
-		Vector<Ref<EditorResourceConversionPlugin>> conversions = EditorNode::get_singleton()->find_resource_conversion_plugin(edited_resource);
-		if (conversions.size()) {
+		Vector<Ref<EditorResourceConversionPlugin>> conversions = EditorNode::get_singleton()->find_resource_conversion_plugin_for_resource(edited_resource);
+		if (!conversions.is_empty()) {
 			edit_menu->add_separator();
 		}
-		for (int i = 0; i < conversions.size(); i++) {
-			String what = conversions[i]->converts_to();
+		int relative_id = 0;
+		for (const Ref<EditorResourceConversionPlugin> &conversion : conversions) {
+			String what = conversion->converts_to();
 			Ref<Texture2D> icon;
 			if (has_theme_icon(what, EditorStringName(EditorIcons))) {
 				icon = get_editor_theme_icon(what);
 			} else {
-				icon = get_theme_icon(what, SNAME("Resource"));
+				icon = get_editor_theme_icon(SNAME("Object"));
 			}
 
-			edit_menu->add_icon_item(icon, vformat(TTR("Convert to %s"), what), CONVERT_BASE_ID + i);
+			edit_menu->add_icon_item(icon, vformat(TTR("Convert to %s"), what), CONVERT_BASE_ID + relative_id);
+			relative_id++;
 		}
 	}
 }
@@ -337,14 +335,14 @@ void EditorResourcePicker::_edit_menu_cbk(int p_which) {
 		} break;
 
 		case OBJ_MENU_QUICKLOAD: {
-			if (!quick_open) {
-				quick_open = memnew(EditorQuickOpen);
-				add_child(quick_open);
-				quick_open->connect("quick_open", callable_mp(this, &EditorResourcePicker::_file_quick_selected));
+			const Vector<String> &base_types_string = base_type.split(",");
+
+			Vector<StringName> base_types;
+			for (const String &type : base_types_string) {
+				base_types.push_back(type);
 			}
 
-			quick_open->popup_dialog(base_type);
-			quick_open->set_title(TTR("Resource"));
+			EditorNode::get_singleton()->get_quick_open_dialog()->popup_dialog(base_types, callable_mp(this, &EditorResourcePicker::_file_selected));
 		} break;
 
 		case OBJ_MENU_INSPECT: {
@@ -451,7 +449,7 @@ void EditorResourcePicker::_edit_menu_cbk(int p_which) {
 
 			if (p_which >= CONVERT_BASE_ID) {
 				int to_type = p_which - CONVERT_BASE_ID;
-				Vector<Ref<EditorResourceConversionPlugin>> conversions = EditorNode::get_singleton()->find_resource_conversion_plugin(edited_resource);
+				Vector<Ref<EditorResourceConversionPlugin>> conversions = EditorNode::get_singleton()->find_resource_conversion_plugin_for_resource(edited_resource);
 				ERR_FAIL_INDEX(to_type, conversions.size());
 
 				edited_resource = conversions[to_type]->convert(edited_resource);

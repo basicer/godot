@@ -288,7 +288,7 @@ public:
 	virtual int get_import_order() const override { return ResourceImporter::IMPORT_ORDER_SCENE; }
 
 	void _pre_fix_global(Node *p_scene, const HashMap<StringName, Variant> &p_options) const;
-	Node *_pre_fix_node(Node *p_node, Node *p_root, HashMap<Ref<ImporterMesh>, Vector<Ref<Shape3D>>> &r_collision_map, Pair<PackedVector3Array, PackedInt32Array> *r_occluder_arrays, List<Pair<NodePath, Node *>> &r_node_renames);
+	Node *_pre_fix_node(Node *p_node, Node *p_root, HashMap<Ref<ImporterMesh>, Vector<Ref<Shape3D>>> &r_collision_map, Pair<PackedVector3Array, PackedInt32Array> *r_occluder_arrays, List<Pair<NodePath, Node *>> &r_node_renames, const HashMap<StringName, Variant> &p_options);
 	Node *_pre_fix_animations(Node *p_node, Node *p_root, const Dictionary &p_node_data, const Dictionary &p_animation_data, float p_animation_fps);
 	Node *_post_fix_node(Node *p_node, Node *p_root, HashMap<Ref<ImporterMesh>, Vector<Ref<Shape3D>>> &collision_map, Pair<PackedVector3Array, PackedInt32Array> &r_occluder_arrays, HashSet<Ref<ImporterMesh>> &r_scanned_meshes, const Dictionary &p_node_data, const Dictionary &p_material_data, const Dictionary &p_animation_data, float p_animation_fps, float p_applied_root_scale);
 	Node *_post_fix_animations(Node *p_node, Node *p_root, const Dictionary &p_node_data, const Dictionary &p_animation_data, float p_animation_fps, bool p_remove_immutable_tracks);
@@ -427,7 +427,39 @@ Vector<Ref<Shape3D>> ResourceImporterScene::get_collision_shapes(const Ref<Impor
 		return shapes;
 	} else if (generate_shape_type == SHAPE_TYPE_TRIMESH) {
 		Vector<Ref<Shape3D>> shapes;
-		shapes.push_back(p_mesh->create_trimesh_shape());
+		int simplification = 0;
+		if (p_options.has(SNAME("physics/simplification"))) {
+			simplification = p_options[SNAME("physics/simplification")];
+		}
+
+		if (simplification > 0) {
+			Ref<MeshSimplificationSettings> simplification_settings = Ref<MeshSimplificationSettings>();
+			simplification_settings.instantiate();
+
+			switch (simplification) {
+				case 1: // Low
+					simplification_settings->set_sloppy(true);
+					simplification_settings->set_target_error(0.004);
+					simplification_settings->set_target_vertex_reduction(0.0);
+					break;
+
+				case 2: // Medium
+					simplification_settings->set_sloppy(false);
+					simplification_settings->set_target_error(0.004);
+					simplification_settings->set_target_vertex_reduction(0.05);
+					break;
+				case 3: // High
+					simplification_settings->set_sloppy(true);
+					simplification_settings->set_target_error(0.5);
+					simplification_settings->set_target_vertex_reduction(0.05);
+					break;
+			}
+
+			shapes.push_back(p_mesh->create_simplified_trimesh_shape(simplification_settings));
+		} else {
+			shapes.push_back(p_mesh->create_trimesh_shape());
+		}
+
 		return shapes;
 	} else if (generate_shape_type == SHAPE_TYPE_BOX) {
 		Ref<BoxShape3D> box;
