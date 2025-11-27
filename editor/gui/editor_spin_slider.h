@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef EDITOR_SPIN_SLIDER_H
-#define EDITOR_SPIN_SLIDER_H
+#pragma once
 
 #include "scene/gui/line_edit.h"
 #include "scene/gui/range.h"
@@ -68,9 +67,19 @@ class EditorSpinSlider : public Range {
 	LineEdit *value_input = nullptr;
 	uint64_t value_input_closed_frame = 0;
 	bool value_input_dirty = false;
+	bool value_input_focus_visible = false;
 
-	bool hide_slider = false;
+public:
+	enum ControlState {
+		CONTROL_STATE_DEFAULT,
+		CONTROL_STATE_PREFER_SLIDER,
+		CONTROL_STATE_HIDE,
+	};
+
+private:
+	ControlState control_state = CONTROL_STATE_DEFAULT;
 	bool flat = false;
+	bool editing_integer = false;
 
 	void _grab_start();
 	void _grab_end();
@@ -98,7 +107,7 @@ protected:
 	static void _bind_methods();
 	void _grabber_mouse_entered();
 	void _grabber_mouse_exited();
-	void _focus_entered();
+	void _focus_entered(bool p_hide_focus = false);
 
 public:
 	String get_tooltip(const Point2 &p_pos) const override;
@@ -110,8 +119,16 @@ public:
 	void set_suffix(const String &p_suffix);
 	String get_suffix() const;
 
+	void set_control_state(ControlState p_type);
+	ControlState get_control_state() const;
+
+#ifndef DISABLE_DEPRECATED
 	void set_hide_slider(bool p_hide);
 	bool is_hiding_slider() const;
+#endif
+
+	void set_editing_integer(bool p_editing_integer);
+	bool is_editing_integer() const;
 
 	void set_read_only(bool p_enable);
 	bool is_read_only() const;
@@ -128,4 +145,4 @@ public:
 	EditorSpinSlider();
 };
 
-#endif // EDITOR_SPIN_SLIDER_H
+VARIANT_ENUM_CAST(EditorSpinSlider::ControlState)

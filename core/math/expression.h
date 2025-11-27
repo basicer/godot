@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef EXPRESSION_H
-#define EXPRESSION_H
+#pragma once
 
 #include "core/object/ref_counted.h"
 
@@ -40,8 +39,6 @@ private:
 	struct Input {
 		Variant::Type type = Variant::NIL;
 		String name;
-
-		Input() {}
 	};
 
 	Vector<Input> inputs;
@@ -136,7 +133,6 @@ private:
 
 		Type type = TYPE_INPUT;
 
-		ENode() {}
 		virtual ~ENode() {
 			if (next) {
 				memdelete(next);
@@ -268,8 +264,5 @@ public:
 	bool has_execute_failed() const;
 	String get_error_text() const;
 
-	Expression() {}
 	~Expression();
 };
-
-#endif // EXPRESSION_H

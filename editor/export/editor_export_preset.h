@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef EDITOR_EXPORT_PRESET_H
-#define EDITOR_EXPORT_PRESET_H
+#pragma once
 
 class EditorExportPlatform;
 
@@ -71,10 +70,14 @@ private:
 	HashSet<String> selected_files;
 	HashMap<String, FileExportMode> customized_files;
 	bool runnable = false;
-	bool advanced_options_enabled = false;
 	bool dedicated_server = false;
 
 	Vector<String> patches;
+	bool patch_delta_encoding_enabled = false;
+	int patch_delta_zstd_level = 19;
+	double patch_delta_min_reduction = 0.1;
+	String patch_delta_include_filter = "*";
+	String patch_delta_exclude_filter;
 
 	friend class EditorExport;
 	friend class EditorExportPlatform;
@@ -126,13 +129,14 @@ public:
 	void set_file_export_mode(const String &p_path, FileExportMode p_mode);
 	FileExportMode get_file_export_mode(const String &p_path, FileExportMode p_default = MODE_FILE_NOT_CUSTOMIZED) const;
 
+	Variant get_project_setting(const StringName &p_name);
+
 	void set_name(const String &p_name);
 	String get_name() const;
 
 	void set_runnable(bool p_enable);
 	bool is_runnable() const;
 
-	void set_advanced_options_enabled(bool p_enabled);
 	bool are_advanced_options_enabled() const;
 
 	void set_dedicated_server(bool p_enable);
@@ -149,10 +153,27 @@ public:
 
 	void add_patch(const String &p_path, int p_at_pos = -1);
 	void set_patch(int p_index, const String &p_path);
+
 	String get_patch(int p_index);
 	void remove_patch(int p_index);
+
 	void set_patches(const Vector<String> &p_patches);
 	Vector<String> get_patches() const;
+
+	void set_patch_delta_encoding_enabled(bool p_enable);
+	bool is_patch_delta_encoding_enabled() const;
+
+	void set_patch_delta_zstd_level(int p_level);
+	int get_patch_delta_zstd_level() const;
+
+	void set_patch_delta_min_reduction(double p_ratio);
+	double get_patch_delta_min_reduction() const;
+
+	void set_patch_delta_include_filter(const String &p_filter);
+	String get_patch_delta_include_filter() const;
+
+	void set_patch_delta_exclude_filter(const String &p_filter);
+	String get_patch_delta_exclude_filter() const;
 
 	void set_custom_features(const String &p_custom_features);
 	String get_custom_features() const;
@@ -195,12 +216,8 @@ public:
 
 	const HashMap<StringName, PropertyInfo> &get_properties() const { return properties; }
 	const HashMap<StringName, Variant> &get_values() const { return values; }
-
-	EditorExportPreset();
 };
 
 VARIANT_ENUM_CAST(EditorExportPreset::ExportFilter);
 VARIANT_ENUM_CAST(EditorExportPreset::FileExportMode);
 VARIANT_ENUM_CAST(EditorExportPreset::ScriptExportMode);
-
-#endif // EDITOR_EXPORT_PRESET_H

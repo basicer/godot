@@ -208,18 +208,19 @@ void main() {
 	// no crash or freeze on all Adreno 3xx	with 'if / else if' and slightly faster!
 	int vertex_id = gl_VertexID % 6;
 	vec2 vertex_base;
-	if (vertex_id == 0)
+	if (vertex_id == 0) {
 		vertex_base = vec2(0.0, 0.0);
-	else if (vertex_id == 1)
+	} else if (vertex_id == 1) {
 		vertex_base = vec2(0.0, 1.0);
-	else if (vertex_id == 2)
+	} else if (vertex_id == 2) {
 		vertex_base = vec2(1.0, 1.0);
-	else if (vertex_id == 3)
+	} else if (vertex_id == 3) {
 		vertex_base = vec2(1.0, 0.0);
-	else if (vertex_id == 4)
+	} else if (vertex_id == 4) {
 		vertex_base = vec2(0.0, 0.0);
-	else if (vertex_id == 5)
+	} else if (vertex_id == 5) {
 		vertex_base = vec2(1.0, 1.0);
+	}
 
 	vec2 uv = read_draw_data_src_rect.xy + abs(read_draw_data_src_rect.zw) * ((read_draw_data_flags & INSTANCE_FLAGS_TRANSPOSE_RECT) != uint(0) ? vertex_base.yx : vertex_base.xy);
 	vec4 color = read_draw_data_modulation;
@@ -558,14 +559,20 @@ float map_ninepatch_axis(float pixel, float draw_size, float tex_pixel_size, flo
 
 #endif
 
-float msdf_median(float r, float g, float b, float a) {
-	return min(max(min(r, g), min(max(r, g), b)), a);
+float msdf_median(float r, float g, float b) {
+	return max(min(r, g), min(max(r, g), b));
 }
 
 void main() {
 	vec4 color = color_interp;
 	vec2 uv = uv_interp;
 	vec2 vertex = vertex_interp;
+
+#if !defined(USE_ATTRIBUTES) && !defined(USE_PRIMITIVE)
+	vec4 region_rect = read_draw_data_src_rect;
+#else
+	vec4 region_rect = vec4(0.0, 0.0, 1.0 / read_draw_data_color_texture_pixel_size);
+#endif
 
 #if !defined(USE_ATTRIBUTES) && !defined(USE_PRIMITIVE)
 
@@ -599,14 +606,15 @@ void main() {
 		vec2 msdf_size = vec2(textureSize(color_texture, 0));
 		vec2 dest_size = vec2(1.0) / fwidth(uv);
 		float px_size = max(0.5 * dot((vec2(px_range) / msdf_size), dest_size), 1.0);
-		float d = msdf_median(msdf_sample.r, msdf_sample.g, msdf_sample.b, msdf_sample.a) - 0.5;
+		float d = msdf_median(msdf_sample.r, msdf_sample.g, msdf_sample.b);
 
 		if (outline_thickness > 0.0) {
-			float cr = clamp(outline_thickness, 0.0, px_range / 2.0) / px_range;
-			float a = clamp((d + cr) * px_size, 0.0, 1.0);
+			float cr = clamp(outline_thickness, 0.0, (px_range / 2.0) - 1.0) / px_range;
+			d = min(d, msdf_sample.a);
+			float a = clamp((d - 0.5 + cr) * px_size, 0.0, 1.0);
 			color.a = a * color.a;
 		} else {
-			float a = clamp(d * px_size + 0.5, 0.0, 1.0);
+			float a = clamp((d - 0.5) * px_size + 0.5, 0.0, 1.0);
 			color.a = a * color.a;
 		}
 	} else if (bool(read_draw_data_flags & INSTANCE_FLAGS_USE_LCD)) {

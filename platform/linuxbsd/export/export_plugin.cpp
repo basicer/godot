@@ -34,16 +34,14 @@
 #include "run_icon_svg.gen.h"
 
 #include "core/config/project_settings.h"
+#include "core/io/dir_access.h"
 #include "editor/editor_node.h"
-#include "editor/editor_paths.h"
 #include "editor/editor_string_names.h"
 #include "editor/export/editor_export.h"
+#include "editor/file_system/editor_paths.h"
 #include "editor/themes/editor_scale.h"
 
-#include "modules/modules_enabled.gen.h" // For svg.
-#ifdef MODULE_SVG_ENABLED
 #include "modules/svg/image_loader_svg.h"
-#endif
 
 Error EditorExportPlatformLinuxBSD::_export_debug_script(const Ref<EditorExportPreset> &p_preset, const String &p_app_name, const String &p_pkg_name, const String &p_path) {
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE);
@@ -53,7 +51,7 @@ Error EditorExportPlatformLinuxBSD::_export_debug_script(const Ref<EditorExportP
 	}
 
 	f->store_line("#!/bin/sh");
-	f->store_line("echo -ne '\\033c\\033]0;" + p_app_name + "\\a'");
+	f->store_line("printf '\\033c\\033]0;%s\\a' " + p_app_name);
 	f->store_line("base_path=\"$(dirname \"$(realpath \"$0\")\")\"");
 	f->store_line("\"$base_path/" + p_pkg_name + "\" \"$@\"");
 
@@ -70,16 +68,21 @@ Error EditorExportPlatformLinuxBSD::export_project(const Ref<EditorExportPreset>
 	if (!template_path.is_empty()) {
 		String exe_arch = _get_exe_arch(template_path);
 		if (arch != exe_arch) {
-			add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Mismatching custom export template executable architecture, found \"%s\", expected \"%s\"."), exe_arch, arch));
+			add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Mismatching custom export template executable architecture: found \"%s\", expected \"%s\"."), exe_arch, arch));
 			return ERR_CANT_CREATE;
 		}
+	}
+
+	Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+	if (da->file_exists(template_path.get_base_dir().path_join("libaccesskit." + arch + ".so"))) {
+		da->copy(template_path.get_base_dir().path_join("libaccesskit." + arch + ".so"), p_path.get_base_dir().path_join("libaccesskit." + arch + ".so"), get_chmod_flags());
 	}
 
 	bool export_as_zip = p_path.ends_with("zip");
 
 	String pkg_name;
-	if (String(GLOBAL_GET("application/config/name")) != "") {
-		pkg_name = String(GLOBAL_GET("application/config/name"));
+	if (String(get_project_setting(p_preset, "application/config/name")) != "") {
+		pkg_name = String(get_project_setting(p_preset, "application/config/name"));
 	} else {
 		pkg_name = "Unnamed";
 	}
@@ -182,7 +185,7 @@ bool EditorExportPlatformLinuxBSD::get_export_option_visibility(const EditorExpo
 void EditorExportPlatformLinuxBSD::get_export_options(List<ExportOption> *r_options) const {
 	EditorExportPlatformPC::get_export_options(r_options);
 
-	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "binary_format/architecture", PROPERTY_HINT_ENUM, "x86_64,x86_32,arm64,arm32,rv64,ppc64,ppc32,loongarch64"), "x86_64"));
+	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "binary_format/architecture", PROPERTY_HINT_ENUM, "x86_64,x86_32,arm64,arm32,rv64,ppc64,loongarch64"), "x86_64"));
 
 	String run_script = "#!/usr/bin/env bash\n"
 						"export DISPLAY=:0\n"
@@ -190,7 +193,7 @@ void EditorExportPlatformLinuxBSD::get_export_options(List<ExportOption> *r_opti
 						"\"{temp_dir}/{exe_name}\" {cmd_args}";
 
 	String cleanup_script = "#!/usr/bin/env bash\n"
-							"kill $(pgrep -x -f \"{temp_dir}/{exe_name} {cmd_args}\")\n"
+							"pkill -x -f \"{temp_dir}/{exe_name} {cmd_args}\"\n"
 							"rm -rf \"{temp_dir}\"";
 
 	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "ssh_remote_deploy/enabled"), false, true));
@@ -274,8 +277,6 @@ String EditorExportPlatformLinuxBSD::_get_exe_arch(const String &p_path) const {
 			return "x86_32";
 		case 0x003e:
 			return "x86_64";
-		case 0x0014:
-			return "ppc32";
 		case 0x0015:
 			return "ppc64";
 		case 0x0028:
@@ -425,8 +426,12 @@ bool EditorExportPlatformLinuxBSD::poll_export() {
 	return menu_options != prev;
 }
 
-Ref<ImageTexture> EditorExportPlatformLinuxBSD::get_option_icon(int p_index) const {
-	return p_index == 1 ? stop_icon : EditorExportPlatform::get_option_icon(p_index);
+Ref<Texture2D> EditorExportPlatformLinuxBSD::get_option_icon(int p_index) const {
+	if (p_index == 1) {
+		return stop_icon;
+	} else {
+		return EditorExportPlatform::get_option_icon(p_index);
+	}
 }
 
 int EditorExportPlatformLinuxBSD::get_options_count() const {
@@ -526,7 +531,7 @@ Error EditorExportPlatformLinuxBSD::run(const Ref<EditorExportPreset> &p_preset,
 	}
 
 	const bool use_remote = p_debug_flags.has_flag(DEBUG_FLAG_REMOTE_DEBUG) || p_debug_flags.has_flag(DEBUG_FLAG_DUMB_CLIENT);
-	int dbg_port = EditorSettings::get_singleton()->get("network/debug/remote_port");
+	int dbg_port = EDITOR_GET("network/debug/remote_port");
 
 	print_line("Creating temporary directory...");
 	ep.step(TTR("Creating temporary directory..."), 2);
@@ -608,9 +613,8 @@ Error EditorExportPlatformLinuxBSD::run(const Ref<EditorExportPreset> &p_preset,
 #undef CLEANUP_AND_RETURN
 }
 
-EditorExportPlatformLinuxBSD::EditorExportPlatformLinuxBSD() {
+void EditorExportPlatformLinuxBSD::initialize() {
 	if (EditorNode::get_singleton()) {
-#ifdef MODULE_SVG_ENABLED
 		Ref<Image> img = memnew(Image);
 		const bool upsample = !Math::is_equal_approx(Math::round(EDSCALE), EDSCALE);
 
@@ -619,7 +623,6 @@ EditorExportPlatformLinuxBSD::EditorExportPlatformLinuxBSD() {
 
 		ImageLoaderSVG::create_image_from_string(img, _linuxbsd_run_icon_svg, EDSCALE, upsample, false);
 		run_icon = ImageTexture::create_from_image(img);
-#endif
 
 		Ref<Theme> theme = EditorNode::get_singleton()->get_editor_theme();
 		if (theme.is_valid()) {

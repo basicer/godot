@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef LIGHT_STORAGE_RD_H
-#define LIGHT_STORAGE_RD_H
+#pragma once
 
 #include "core/templates/local_vector.h"
 #include "core/templates/paged_array.h"
@@ -221,7 +220,6 @@ private:
 
 	struct ReflectionProbe {
 		RS::ReflectionProbeUpdateMode update_mode = RS::REFLECTION_PROBE_UPDATE_ONCE;
-		int resolution = 256;
 		float intensity = 1.0;
 		float blend_distance = 1.0;
 		RS::ReflectionProbeAmbientMode ambient_mode = RS::REFLECTION_PROBE_AMBIENT_ENVIRONMENT;
@@ -247,6 +245,7 @@ private:
 	struct ReflectionAtlas {
 		int count = 0;
 		int size = 0;
+		bool update_always = false;
 
 		RID reflection;
 		RID depth_buffer;
@@ -266,6 +265,8 @@ private:
 	};
 
 	mutable RID_Owner<ReflectionAtlas> reflection_atlas_owner;
+
+	void _reflection_atlas_clear(ReflectionAtlas *p_reflection_atlas);
 
 	/* REFLECTION PROBE INSTANCE */
 
@@ -316,10 +317,10 @@ private:
 	};
 
 	struct ReflectionProbeInstanceSort {
-		float depth;
+		float size;
 		ReflectionProbeInstance *probe_instance;
 		bool operator<(const ReflectionProbeInstanceSort &p_sort) const {
-			return depth < p_sort.depth;
+			return size < p_sort.size;
 		}
 	};
 
@@ -864,7 +865,6 @@ public:
 	virtual float reflection_probe_get_origin_max_distance(RID p_probe) const override;
 	virtual float reflection_probe_get_mesh_lod_threshold(RID p_probe) const override;
 
-	int reflection_probe_get_resolution(RID p_probe) const;
 	float reflection_probe_get_baked_exposure(RID p_probe) const;
 	virtual bool reflection_probe_renders_shadows(RID p_probe) const override;
 
@@ -1164,5 +1164,3 @@ public:
 };
 
 } // namespace RendererRD
-
-#endif // LIGHT_STORAGE_RD_H

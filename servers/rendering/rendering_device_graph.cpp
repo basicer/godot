@@ -35,6 +35,9 @@
 #define PRINT_RESOURCE_TRACKER_TOTAL 0
 #define PRINT_COMMAND_RECORDING 0
 
+// Prints the total number of bytes used for draw lists in a frame.
+#define PRINT_DRAW_LIST_STATS 0
+
 RenderingDeviceGraph::RenderingDeviceGraph() {
 	driver_honors_barriers = false;
 	driver_clears_with_copy_engine = false;
@@ -81,6 +84,8 @@ String RenderingDeviceGraph::_usage_to_string(ResourceUsage p_usage) {
 			return "Attachment Color Read Write";
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
 			return "Attachment Depth Stencil Read Write";
+		case RESOURCE_USAGE_GENERAL:
+			return "General";
 		default:
 			ERR_FAIL_V_MSG("Invalid", vformat("Invalid resource usage %d.", p_usage));
 	}
@@ -98,6 +103,8 @@ bool RenderingDeviceGraph::_is_write_usage(ResourceUsage p_usage) {
 		case RESOURCE_USAGE_INDEX_BUFFER_READ:
 		case RESOURCE_USAGE_TEXTURE_SAMPLE:
 		case RESOURCE_USAGE_STORAGE_IMAGE_READ:
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_SHADING_RATE_READ:
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_DENSITY_MAP_READ:
 			return false;
 		case RESOURCE_USAGE_COPY_TO:
 		case RESOURCE_USAGE_RESOLVE_TO:
@@ -106,6 +113,7 @@ bool RenderingDeviceGraph::_is_write_usage(ResourceUsage p_usage) {
 		case RESOURCE_USAGE_STORAGE_IMAGE_READ_WRITE:
 		case RESOURCE_USAGE_ATTACHMENT_COLOR_READ_WRITE:
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
+		case RESOURCE_USAGE_GENERAL:
 			return true;
 		default:
 			DEV_ASSERT(false && "Invalid resource tracker usage.");
@@ -132,6 +140,12 @@ RDD::TextureLayout RenderingDeviceGraph::_usage_to_image_layout(ResourceUsage p_
 			return RDD::TEXTURE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
 			return RDD::TEXTURE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_SHADING_RATE_READ:
+			return RDD::TEXTURE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL;
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_DENSITY_MAP_READ:
+			return RDD::TEXTURE_LAYOUT_FRAGMENT_DENSITY_MAP_ATTACHMENT_OPTIMAL;
+		case RESOURCE_USAGE_GENERAL:
+			return RDD::TEXTURE_LAYOUT_GENERAL;
 		case RESOURCE_USAGE_NONE:
 			return RDD::TEXTURE_LAYOUT_UNDEFINED;
 		default:
@@ -176,6 +190,12 @@ RDD::BarrierAccessBits RenderingDeviceGraph::_usage_to_access_bits(ResourceUsage
 			return RDD::BarrierAccessBits(RDD::BARRIER_ACCESS_COLOR_ATTACHMENT_READ_BIT | RDD::BARRIER_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 		case RESOURCE_USAGE_ATTACHMENT_DEPTH_STENCIL_READ_WRITE:
 			return RDD::BarrierAccessBits(RDD::BARRIER_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | RDD::BARRIER_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_SHADING_RATE_READ:
+			return RDD::BARRIER_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT;
+		case RESOURCE_USAGE_ATTACHMENT_FRAGMENT_DENSITY_MAP_READ:
+			return RDD::BARRIER_ACCESS_FRAGMENT_DENSITY_MAP_ATTACHMENT_READ_BIT;
+		case RESOURCE_USAGE_GENERAL:
+			return RDD::BarrierAccessBits(RDD::BARRIER_ACCESS_MEMORY_READ_BIT | RDD::BARRIER_ACCESS_MEMORY_WRITE_BIT);
 		default:
 			DEV_ASSERT(false && "Invalid usage.");
 			return RDD::BarrierAccessBits(0);
@@ -269,9 +289,12 @@ int32_t RenderingDeviceGraph::_add_to_write_list(int32_t p_command_index, Rect2i
 	return next_index;
 }
 
+// Ensures all commands are 8-byte aligned.
+#define GRAPH_ALIGN(x) (((x) + 7u) & 0xFFFFFFF8u)
+
 RenderingDeviceGraph::RecordedCommand *RenderingDeviceGraph::_allocate_command(uint32_t p_command_size, int32_t &r_command_index) {
 	uint32_t command_data_offset = command_data.size();
-	command_data_offset = STEPIFY(command_data_offset, 8);
+	command_data_offset = GRAPH_ALIGN(command_data_offset);
 	command_data_offsets.push_back(command_data_offset);
 	command_data.resize(command_data_offset + p_command_size);
 	r_command_index = command_count++;
@@ -282,12 +305,14 @@ RenderingDeviceGraph::RecordedCommand *RenderingDeviceGraph::_allocate_command(u
 
 RenderingDeviceGraph::DrawListInstruction *RenderingDeviceGraph::_allocate_draw_list_instruction(uint32_t p_instruction_size) {
 	uint32_t draw_list_data_offset = draw_instruction_list.data.size();
+	draw_list_data_offset = GRAPH_ALIGN(draw_list_data_offset);
 	draw_instruction_list.data.resize(draw_list_data_offset + p_instruction_size);
 	return reinterpret_cast<DrawListInstruction *>(&draw_instruction_list.data[draw_list_data_offset]);
 }
 
 RenderingDeviceGraph::ComputeListInstruction *RenderingDeviceGraph::_allocate_compute_list_instruction(uint32_t p_instruction_size) {
 	uint32_t compute_list_data_offset = compute_instruction_list.data.size();
+	compute_list_data_offset = GRAPH_ALIGN(compute_list_data_offset);
 	compute_instruction_list.data.resize(compute_list_data_offset + p_instruction_size);
 	return reinterpret_cast<ComputeListInstruction *>(&compute_instruction_list.data[compute_list_data_offset]);
 }
@@ -747,7 +772,7 @@ void RenderingDeviceGraph::_run_compute_list_command(RDD::CommandBufferID p_comm
 			} break;
 			case ComputeListInstruction::TYPE_BIND_UNIFORM_SETS: {
 				const ComputeListBindUniformSetsInstruction *bind_uniform_sets_instruction = reinterpret_cast<const ComputeListBindUniformSetsInstruction *>(instruction);
-				driver->command_bind_compute_uniform_sets(p_command_buffer, VectorView<RDD::UniformSetID>(bind_uniform_sets_instruction->uniform_set_ids(), bind_uniform_sets_instruction->set_count), bind_uniform_sets_instruction->shader, bind_uniform_sets_instruction->first_set_index, bind_uniform_sets_instruction->set_count);
+				driver->command_bind_compute_uniform_sets(p_command_buffer, VectorView<RDD::UniformSetID>(bind_uniform_sets_instruction->uniform_set_ids(), bind_uniform_sets_instruction->set_count), bind_uniform_sets_instruction->shader, bind_uniform_sets_instruction->first_set_index, bind_uniform_sets_instruction->set_count, bind_uniform_sets_instruction->dynamic_offsets_mask);
 				instruction_data_cursor += sizeof(ComputeListBindUniformSetsInstruction) + sizeof(RDD::UniformSetID) * bind_uniform_sets_instruction->set_count;
 			} break;
 			case ComputeListInstruction::TYPE_DISPATCH: {
@@ -776,6 +801,8 @@ void RenderingDeviceGraph::_run_compute_list_command(RDD::CommandBufferID p_comm
 				DEV_ASSERT(false && "Unknown compute list instruction type.");
 				return;
 		}
+
+		instruction_data_cursor = GRAPH_ALIGN(instruction_data_cursor);
 	}
 }
 
@@ -811,7 +838,15 @@ void RenderingDeviceGraph::_get_draw_list_render_pass_and_framebuffer(const Reco
 	r_framebuffer = it->value.framebuffer;
 }
 
+#if PRINT_DRAW_LIST_STATS
+static uint32_t draw_list_total_size = 0;
+#endif
+
 void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size) {
+#if PRINT_DRAW_LIST_STATS
+	draw_list_total_size += p_instruction_data_size;
+#endif
+
 	uint32_t instruction_data_cursor = 0;
 	while (instruction_data_cursor < p_instruction_data_size) {
 		DEV_ASSERT((instruction_data_cursor + sizeof(DrawListInstruction)) <= p_instruction_data_size);
@@ -830,12 +865,12 @@ void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command
 			} break;
 			case DrawListInstruction::TYPE_BIND_UNIFORM_SETS: {
 				const DrawListBindUniformSetsInstruction *bind_uniform_sets_instruction = reinterpret_cast<const DrawListBindUniformSetsInstruction *>(instruction);
-				driver->command_bind_render_uniform_sets(p_command_buffer, VectorView<RDD::UniformSetID>(bind_uniform_sets_instruction->uniform_set_ids(), bind_uniform_sets_instruction->set_count), bind_uniform_sets_instruction->shader, bind_uniform_sets_instruction->first_set_index, bind_uniform_sets_instruction->set_count);
+				driver->command_bind_render_uniform_sets(p_command_buffer, VectorView<RDD::UniformSetID>(bind_uniform_sets_instruction->uniform_set_ids(), bind_uniform_sets_instruction->set_count), bind_uniform_sets_instruction->shader, bind_uniform_sets_instruction->first_set_index, bind_uniform_sets_instruction->set_count, bind_uniform_sets_instruction->dynamic_offsets_mask);
 				instruction_data_cursor += sizeof(DrawListBindUniformSetsInstruction) + sizeof(RDD::UniformSetID) * bind_uniform_sets_instruction->set_count;
 			} break;
 			case DrawListInstruction::TYPE_BIND_VERTEX_BUFFERS: {
 				const DrawListBindVertexBuffersInstruction *bind_vertex_buffers_instruction = reinterpret_cast<const DrawListBindVertexBuffersInstruction *>(instruction);
-				driver->command_render_bind_vertex_buffers(p_command_buffer, bind_vertex_buffers_instruction->vertex_buffers_count, bind_vertex_buffers_instruction->vertex_buffers(), bind_vertex_buffers_instruction->vertex_buffer_offsets());
+				driver->command_render_bind_vertex_buffers(p_command_buffer, bind_vertex_buffers_instruction->vertex_buffers_count, bind_vertex_buffers_instruction->vertex_buffers(), bind_vertex_buffers_instruction->vertex_buffer_offsets(), bind_vertex_buffers_instruction->dynamic_offsets_mask);
 				instruction_data_cursor += sizeof(DrawListBindVertexBuffersInstruction);
 				instruction_data_cursor += sizeof(RDD::BufferID) * bind_vertex_buffers_instruction->vertex_buffers_count;
 				instruction_data_cursor += sizeof(uint64_t) * bind_vertex_buffers_instruction->vertex_buffers_count;
@@ -915,10 +950,12 @@ void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command
 				DEV_ASSERT(false && "Unknown draw list instruction type.");
 				return;
 		}
+
+		instruction_data_cursor = GRAPH_ALIGN(instruction_data_cursor);
 	}
 }
 
-void RenderingDeviceGraph::_add_draw_list_begin(FramebufferCache *p_framebuffer_cache, RDD::RenderPassID p_render_pass, RDD::FramebufferID p_framebuffer, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, bool p_uses_color, bool p_uses_depth, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
+void RenderingDeviceGraph::_add_draw_list_begin(FramebufferCache *p_framebuffer_cache, RDD::RenderPassID p_render_pass, RDD::FramebufferID p_framebuffer, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, BitField<RDD::PipelineStageBits> p_stages, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
 	DEV_ASSERT(p_attachment_operations.size() == p_attachment_clear_values.size());
 
 	draw_instruction_list.clear();
@@ -927,21 +964,13 @@ void RenderingDeviceGraph::_add_draw_list_begin(FramebufferCache *p_framebuffer_
 	draw_instruction_list.render_pass = p_render_pass;
 	draw_instruction_list.framebuffer = p_framebuffer;
 	draw_instruction_list.region = p_region;
+	draw_instruction_list.stages = p_stages;
 	draw_instruction_list.attachment_operations.resize(p_attachment_operations.size());
 	draw_instruction_list.attachment_clear_values.resize(p_attachment_clear_values.size());
 
 	for (uint32_t i = 0; i < p_attachment_operations.size(); i++) {
 		draw_instruction_list.attachment_operations[i] = p_attachment_operations[i];
 		draw_instruction_list.attachment_clear_values[i] = p_attachment_clear_values[i];
-	}
-
-	if (p_uses_color) {
-		draw_instruction_list.stages.set_flag(RDD::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-	}
-
-	if (p_uses_depth) {
-		draw_instruction_list.stages.set_flag(RDD::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
-		draw_instruction_list.stages.set_flag(RDD::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 	}
 
 	draw_instruction_list.split_cmd_buffer = p_split_cmd_buffer;
@@ -993,6 +1022,10 @@ void RenderingDeviceGraph::_run_render_commands(int32_t p_level, const RecordedC
 				for (uint32_t j = 0; j < buffer_update_command->buffer_copies_count; j++) {
 					driver->command_copy_buffer(r_command_buffer, command_buffer_copies[j].source, buffer_update_command->destination, command_buffer_copies[j].region);
 				}
+			} break;
+			case RecordedCommand::TYPE_DRIVER_CALLBACK: {
+				const RecordedDriverCallbackCommand *driver_callback_command = reinterpret_cast<const RecordedDriverCallbackCommand *>(command);
+				driver_callback_command->callback(driver, r_command_buffer, driver_callback_command->userdata);
 			} break;
 			case RecordedCommand::TYPE_COMPUTE_LIST: {
 				if (device.workarounds.avoid_compute_after_draw && workarounds_state.draw_list_found) {
@@ -1115,10 +1148,10 @@ void RenderingDeviceGraph::_run_label_command_change(RDD::CommandBufferID p_comm
 		Color label_color;
 		if (p_new_label_index >= 0) {
 			const char *label_chars = &command_label_chars[command_label_offsets[p_new_label_index]];
-			label_name.parse_utf8(label_chars);
+			label_name.append_utf8(label_chars);
 			label_color = command_label_colors[p_new_label_index];
 		} else if (p_use_label_for_empty) {
-			label_name = "Command graph";
+			label_name = "Command Graph";
 			label_color = Color(1, 1, 1, 1);
 		} else {
 			return;
@@ -1132,6 +1165,7 @@ void RenderingDeviceGraph::_run_label_command_change(RDD::CommandBufferID p_comm
 			bool copy_commands = false;
 			bool compute_commands = false;
 			bool draw_commands = false;
+			bool custom_commands = false;
 			for (uint32_t i = 0; i < p_sorted_commands_count; i++) {
 				const uint32_t command_index = p_sorted_commands[i].index;
 				const uint32_t command_data_offset = command_data_offsets[command_index];
@@ -1158,27 +1192,33 @@ void RenderingDeviceGraph::_run_label_command_change(RDD::CommandBufferID p_comm
 					case RecordedCommand::TYPE_DRAW_LIST: {
 						draw_commands = true;
 					} break;
+					case RecordedCommand::TYPE_DRIVER_CALLBACK: {
+						custom_commands = true;
+					} break;
 					default: {
 						// Ignore command.
 					} break;
 				}
 
-				if (copy_commands && compute_commands && draw_commands) {
+				if (copy_commands && compute_commands && draw_commands && custom_commands) {
 					// There's no more command types to find.
 					break;
 				}
 			}
 
-			if (copy_commands || compute_commands || draw_commands) {
+			if (copy_commands || compute_commands || draw_commands || custom_commands) {
 				// Add the operations to the name.
-				bool plus_after_copy = copy_commands && (compute_commands || draw_commands);
-				bool plus_after_compute = compute_commands && draw_commands;
+				bool plus_after_copy = copy_commands && (compute_commands || draw_commands || custom_commands);
+				bool plus_after_compute = compute_commands && (draw_commands || custom_commands);
+				bool plus_after_draw = draw_commands && custom_commands;
 				label_name += " (";
 				label_name += copy_commands ? "Copy" : "";
 				label_name += plus_after_copy ? "+" : "";
 				label_name += compute_commands ? "Compute" : "";
 				label_name += plus_after_compute ? "+" : "";
 				label_name += draw_commands ? "Draw" : "";
+				label_name += plus_after_draw ? "+" : "";
+				label_name += custom_commands ? "Custom" : "";
 				label_name += ")";
 			}
 		}
@@ -1289,7 +1329,7 @@ void RenderingDeviceGraph::_group_barriers_for_render_commands(RDD::CommandBuffe
 		return;
 	}
 
-	const VectorView<RDD::MemoryBarrier> memory_barriers = !is_memory_barrier_empty ? barrier_group.memory_barrier : VectorView<RDD::MemoryBarrier>();
+	const VectorView<RDD::MemoryAccessBarrier> memory_barriers = !is_memory_barrier_empty ? barrier_group.memory_barrier : VectorView<RDD::MemoryAccessBarrier>();
 	const VectorView<RDD::TextureBarrier> texture_barriers = barrier_group.normalization_barriers.is_empty() ? barrier_group.transition_barriers : barrier_group.normalization_barriers;
 #if USE_BUFFER_BARRIERS
 	const VectorView<RDD::BufferBarrier> buffer_barriers = !are_buffer_barriers_empty ? barrier_group.buffer_barriers : VectorView<RDD::BufferBarrier>();
@@ -1301,7 +1341,7 @@ void RenderingDeviceGraph::_group_barriers_for_render_commands(RDD::CommandBuffe
 
 	bool separate_texture_barriers = !barrier_group.normalization_barriers.is_empty() && !barrier_group.transition_barriers.is_empty();
 	if (separate_texture_barriers) {
-		driver->command_pipeline_barrier(p_command_buffer, barrier_group.src_stages, barrier_group.dst_stages, VectorView<RDD::MemoryBarrier>(), VectorView<RDD::BufferBarrier>(), barrier_group.transition_barriers);
+		driver->command_pipeline_barrier(p_command_buffer, barrier_group.src_stages, barrier_group.dst_stages, VectorView<RDD::MemoryAccessBarrier>(), VectorView<RDD::BufferBarrier>(), barrier_group.transition_barriers);
 	}
 }
 
@@ -1327,6 +1367,9 @@ void RenderingDeviceGraph::_print_render_commands(const RecordedCommandSort *p_s
 			case RecordedCommand::TYPE_BUFFER_UPDATE: {
 				const RecordedBufferUpdateCommand *buffer_update_command = reinterpret_cast<const RecordedBufferUpdateCommand *>(command);
 				print_line(command_index, "LEVEL", command_level, "BUFFER UPDATE DESTINATION", itos(buffer_update_command->destination.id), "COPIES", buffer_update_command->buffer_copies_count);
+			} break;
+			case RecordedCommand::TYPE_DRIVER_CALLBACK: {
+				print_line(command_index, "LEVEL", command_level, "DRIVER CALLBACK");
 			} break;
 			case RecordedCommand::TYPE_COMPUTE_LIST: {
 				const RecordedComputeListCommand *compute_list_command = reinterpret_cast<const RecordedComputeListCommand *>(command);
@@ -1387,7 +1430,7 @@ void RenderingDeviceGraph::_print_draw_list(const uint8_t *p_instruction_data, u
 				const DrawListBindUniformSetsInstruction *bind_uniform_sets_instruction = reinterpret_cast<const DrawListBindUniformSetsInstruction *>(instruction);
 				print_line("\tBIND UNIFORM SETS COUNT", bind_uniform_sets_instruction->set_count);
 				for (uint32_t i = 0; i < bind_uniform_sets_instruction->set_count; i++) {
-					print_line("\tBIND UNIFORM SET ID", itos(bind_uniform_sets_instruction->uniform_set_ids()[i].id), "START INDEX", bind_uniform_sets_instruction->first_set_index);
+					print_line("\tBIND UNIFORM SET ID", itos(bind_uniform_sets_instruction->uniform_set_ids()[i].id), "START INDEX", bind_uniform_sets_instruction->first_set_index, "DYNAMIC_OFFSETS", bind_uniform_sets_instruction->dynamic_offsets_mask);
 				}
 				instruction_data_cursor += sizeof(DrawListBindUniformSetsInstruction) + sizeof(RDD::UniformSetID) * bind_uniform_sets_instruction->set_count;
 			} break;
@@ -1468,6 +1511,8 @@ void RenderingDeviceGraph::_print_draw_list(const uint8_t *p_instruction_data, u
 				DEV_ASSERT(false && "Unknown draw list instruction type.");
 				return;
 		}
+
+		instruction_data_cursor = GRAPH_ALIGN(instruction_data_cursor);
 	}
 }
 
@@ -1487,7 +1532,7 @@ void RenderingDeviceGraph::_print_compute_list(const uint8_t *p_instruction_data
 				const ComputeListBindUniformSetsInstruction *bind_uniform_sets_instruction = reinterpret_cast<const ComputeListBindUniformSetsInstruction *>(instruction);
 				print_line("\tBIND UNIFORM SETS COUNT", bind_uniform_sets_instruction->set_count);
 				for (uint32_t i = 0; i < bind_uniform_sets_instruction->set_count; i++) {
-					print_line("\tBIND UNIFORM SET ID", itos(bind_uniform_sets_instruction->uniform_set_ids()[i].id), "START INDEX", bind_uniform_sets_instruction->first_set_index);
+					print_line("\tBIND UNIFORM SET ID", itos(bind_uniform_sets_instruction->uniform_set_ids()[i].id), "START INDEX", bind_uniform_sets_instruction->first_set_index, "DYNAMIC_OFFSETS", bind_uniform_sets_instruction->dynamic_offsets_mask);
 				}
 				instruction_data_cursor += sizeof(ComputeListBindUniformSetsInstruction) + sizeof(RDD::UniformSetID) * bind_uniform_sets_instruction->set_count;
 			} break;
@@ -1516,6 +1561,8 @@ void RenderingDeviceGraph::_print_compute_list(const uint8_t *p_instruction_data
 				DEV_ASSERT(false && "Unknown compute list instruction type.");
 				return;
 		}
+
+		instruction_data_cursor = GRAPH_ALIGN(instruction_data_cursor);
 	}
 }
 
@@ -1546,7 +1593,9 @@ void RenderingDeviceGraph::initialize(RDD *p_driver, RenderingContextDriver::Dev
 }
 
 void RenderingDeviceGraph::finalize() {
-	_wait_for_secondary_command_buffer_tasks();
+	if (!frames.is_empty()) {
+		_wait_for_secondary_command_buffer_tasks();
+	}
 
 	for (Frame &f : frames) {
 		for (SecondaryCommandBuffer &secondary : f.secondary_command_buffers) {
@@ -1658,6 +1707,17 @@ void RenderingDeviceGraph::add_buffer_update(RDD::BufferID p_dst, ResourceTracke
 	_add_command_to_graph(&p_dst_tracker, &buffer_usage, 1, command_index, command);
 }
 
+void RenderingDeviceGraph::add_driver_callback(RDD::DriverCallback p_callback, void *p_userdata, VectorView<ResourceTracker *> p_trackers, VectorView<RenderingDeviceGraph::ResourceUsage> p_usages) {
+	DEV_ASSERT(p_trackers.size() == p_usages.size());
+
+	int32_t command_index;
+	RecordedDriverCallbackCommand *command = static_cast<RecordedDriverCallbackCommand *>(_allocate_command(sizeof(RecordedDriverCallbackCommand), command_index));
+	command->type = RecordedCommand::TYPE_DRIVER_CALLBACK;
+	command->callback = p_callback;
+	command->userdata = p_userdata;
+	_add_command_to_graph((ResourceTracker **)p_trackers.ptr(), (ResourceUsage *)p_usages.ptr(), p_trackers.size(), command_index, command);
+}
+
 void RenderingDeviceGraph::add_compute_list_begin(RDD::BreadcrumbMarker p_phase, uint32_t p_breadcrumb_data) {
 	compute_instruction_list.clear();
 #if defined(DEBUG_ENABLED) || defined(DEV_ENABLED)
@@ -1686,6 +1746,7 @@ void RenderingDeviceGraph::add_compute_list_bind_uniform_sets(RDD::ShaderID p_sh
 	instruction->shader = p_shader;
 	instruction->first_set_index = p_first_set_index;
 	instruction->set_count = p_set_count;
+	instruction->dynamic_offsets_mask = driver->uniform_sets_get_dynamic_offsets(p_uniform_sets, p_shader, p_first_set_index, p_set_count);
 
 	RDD::UniformSetID *ids = instruction->uniform_set_ids();
 	for (uint32_t i = 0; i < p_set_count; i++) {
@@ -1764,12 +1825,12 @@ void RenderingDeviceGraph::add_compute_list_end() {
 	_add_command_to_graph(compute_instruction_list.command_trackers.ptr(), compute_instruction_list.command_tracker_usages.ptr(), compute_instruction_list.command_trackers.size(), command_index, command);
 }
 
-void RenderingDeviceGraph::add_draw_list_begin(FramebufferCache *p_framebuffer_cache, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, bool p_uses_color, bool p_uses_depth, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
-	_add_draw_list_begin(p_framebuffer_cache, RDD::RenderPassID(), RDD::FramebufferID(), p_region, p_attachment_operations, p_attachment_clear_values, p_uses_color, p_uses_depth, p_breadcrumb, p_split_cmd_buffer);
+void RenderingDeviceGraph::add_draw_list_begin(FramebufferCache *p_framebuffer_cache, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, BitField<RDD::PipelineStageBits> p_stages, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
+	_add_draw_list_begin(p_framebuffer_cache, RDD::RenderPassID(), RDD::FramebufferID(), p_region, p_attachment_operations, p_attachment_clear_values, p_stages, p_breadcrumb, p_split_cmd_buffer);
 }
 
-void RenderingDeviceGraph::add_draw_list_begin(RDD::RenderPassID p_render_pass, RDD::FramebufferID p_framebuffer, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, bool p_uses_color, bool p_uses_depth, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
-	_add_draw_list_begin(nullptr, p_render_pass, p_framebuffer, p_region, p_attachment_operations, p_attachment_clear_values, p_uses_color, p_uses_depth, p_breadcrumb, p_split_cmd_buffer);
+void RenderingDeviceGraph::add_draw_list_begin(RDD::RenderPassID p_render_pass, RDD::FramebufferID p_framebuffer, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, BitField<RDD::PipelineStageBits> p_stages, uint32_t p_breadcrumb, bool p_split_cmd_buffer) {
+	_add_draw_list_begin(nullptr, p_render_pass, p_framebuffer, p_region, p_attachment_operations, p_attachment_clear_values, p_stages, p_breadcrumb, p_split_cmd_buffer);
 }
 
 void RenderingDeviceGraph::add_draw_list_bind_index_buffer(RDD::BufferID p_buffer, RDD::IndexBufferFormat p_format, uint32_t p_offset) {
@@ -1804,19 +1865,21 @@ void RenderingDeviceGraph::add_draw_list_bind_uniform_sets(RDD::ShaderID p_shade
 	instruction->shader = p_shader;
 	instruction->first_set_index = p_first_index;
 	instruction->set_count = p_set_count;
+	instruction->dynamic_offsets_mask = driver->uniform_sets_get_dynamic_offsets(p_uniform_sets, p_shader, p_first_index, p_set_count);
 
 	for (uint32_t i = 0; i < p_set_count; i++) {
 		instruction->uniform_set_ids()[i] = p_uniform_sets[i];
 	}
 }
 
-void RenderingDeviceGraph::add_draw_list_bind_vertex_buffers(VectorView<RDD::BufferID> p_vertex_buffers, VectorView<uint64_t> p_vertex_buffer_offsets) {
+void RenderingDeviceGraph::add_draw_list_bind_vertex_buffers(Span<RDD::BufferID> p_vertex_buffers, Span<uint64_t> p_vertex_buffer_offsets) {
 	DEV_ASSERT(p_vertex_buffers.size() == p_vertex_buffer_offsets.size());
 
 	uint32_t instruction_size = sizeof(DrawListBindVertexBuffersInstruction) + sizeof(RDD::BufferID) * p_vertex_buffers.size() + sizeof(uint64_t) * p_vertex_buffer_offsets.size();
 	DrawListBindVertexBuffersInstruction *instruction = reinterpret_cast<DrawListBindVertexBuffersInstruction *>(_allocate_draw_list_instruction(instruction_size));
 	instruction->type = DrawListInstruction::TYPE_BIND_VERTEX_BUFFERS;
 	instruction->vertex_buffers_count = p_vertex_buffers.size();
+	instruction->dynamic_offsets_mask = driver->buffer_get_dynamic_offsets(p_vertex_buffers);
 
 	RDD::BufferID *vertex_buffers = instruction->vertex_buffers();
 	uint64_t *vertex_buffer_offsets = instruction->vertex_buffer_offsets();
@@ -2178,13 +2241,12 @@ void RenderingDeviceGraph::add_synchronization() {
 	}
 }
 
-void RenderingDeviceGraph::begin_label(const String &p_label_name, const Color &p_color) {
+void RenderingDeviceGraph::begin_label(const Span<char> &p_label_name, const Color &p_color) {
 	uint32_t command_label_offset = command_label_chars.size();
-	PackedByteArray command_label_utf8 = p_label_name.to_utf8_buffer();
-	int command_label_utf8_size = command_label_utf8.size();
-	command_label_chars.resize(command_label_offset + command_label_utf8_size + 1);
-	memcpy(&command_label_chars[command_label_offset], command_label_utf8.ptr(), command_label_utf8.size());
-	command_label_chars[command_label_offset + command_label_utf8_size] = '\0';
+	int command_label_size = p_label_name.size();
+	command_label_chars.resize(command_label_offset + command_label_size + 1);
+	memcpy(&command_label_chars[command_label_offset], p_label_name.ptr(), command_label_size);
+	command_label_chars[command_label_offset + command_label_size] = '\0';
 	command_label_colors.push_back(p_color);
 	command_label_offsets.push_back(command_label_offset);
 	command_label_index = command_label_count;
@@ -2271,7 +2333,8 @@ void RenderingDeviceGraph::end(bool p_reorder_commands, bool p_full_barriers, RD
 			2, // TYPE_TEXTURE_GET_DATA
 			2, // TYPE_TEXTURE_RESOLVE
 			2, // TYPE_TEXTURE_UPDATE
-			2, // TYPE_INSERT_BREADCRUMB
+			2, // TYPE_CAPTURE_TIMESTAMP
+			5, // TYPE_DRIVER_CALLBACK
 		};
 
 		commands_sorted.clear();
@@ -2316,6 +2379,10 @@ void RenderingDeviceGraph::end(bool p_reorder_commands, bool p_full_barriers, RD
 			// Reset the state of the workaround.
 			workarounds_state.draw_list_found = false;
 		}
+
+#if PRINT_DRAW_LIST_STATS
+		draw_list_total_size = 0;
+#endif
 
 		if (p_reorder_commands) {
 #if PRINT_RENDER_GRAPH
@@ -2367,6 +2434,9 @@ void RenderingDeviceGraph::end(bool p_reorder_commands, bool p_full_barriers, RD
 
 		_run_label_command_change(r_command_buffer, -1, -1, false, false, nullptr, 0, current_label_index, current_label_level);
 
+#if PRINT_DRAW_LIST_STATS
+		print_line(vformat("Draw list %d bytes", draw_list_total_size));
+#endif
 #if PRINT_COMMAND_RECORDING
 		print_line(vformat("Recorded %d commands", command_count));
 #endif

@@ -28,11 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef ENVIRONMENT_STORAGE_H
-#define ENVIRONMENT_STORAGE_H
+#pragma once
 
 #include "core/templates/rid_owner.h"
-#include "servers/rendering_server.h"
+#include "servers/rendering/rendering_server.h"
 
 class RendererEnvironmentStorage {
 private:
@@ -99,11 +98,11 @@ private:
 		// Glow
 		bool glow_enabled = false;
 		Vector<float> glow_levels;
-		float glow_intensity = 0.8;
+		float glow_intensity = 0.3;
 		float glow_strength = 1.0;
 		float glow_bloom = 0.0;
 		float glow_mix = 0.01;
-		RS::EnvironmentGlowBlendMode glow_blend_mode = RS::ENV_GLOW_BLEND_MODE_SOFTLIGHT;
+		RS::EnvironmentGlowBlendMode glow_blend_mode = RS::ENV_GLOW_BLEND_MODE_SCREEN;
 		float glow_hdr_bleed_threshold = 1.0;
 		float glow_hdr_luminance_cap = 12.0;
 		float glow_hdr_bleed_scale = 2.0;
@@ -115,7 +114,7 @@ private:
 		int ssr_max_steps = 64;
 		float ssr_fade_in = 0.15;
 		float ssr_fade_out = 2.0;
-		float ssr_depth_tolerance = 0.2;
+		float ssr_depth_tolerance = 0.5;
 
 		// SSAO
 		bool ssao_enabled = false;
@@ -305,5 +304,3 @@ public:
 	bool environment_get_use_1d_color_correction(RID p_env) const;
 	RID environment_get_color_correction(RID p_env) const;
 };
-
-#endif // ENVIRONMENT_STORAGE_H

@@ -29,7 +29,6 @@
 /**************************************************************************/
 
 #include "openxr_dpad_binding_extension.h"
-#include "../action_map/openxr_interaction_profile_metadata.h"
 #include "../openxr_api.h"
 #include "core/math/math_funcs.h"
 
@@ -53,7 +52,7 @@ OpenXRDPadBindingExtension::~OpenXRDPadBindingExtension() {
 	singleton = nullptr;
 }
 
-HashMap<String, bool *> OpenXRDPadBindingExtension::get_requested_extensions() {
+HashMap<String, bool *> OpenXRDPadBindingExtension::get_requested_extensions(XrVersion p_version) {
 	HashMap<String, bool *> request_extensions;
 
 	// Note, we're dependent on the binding modifier extension, this may be requested by multiple extension wrappers.
@@ -109,7 +108,7 @@ void OpenXRDpadBindingModifier::_bind_methods() {
 }
 
 OpenXRDpadBindingModifier::OpenXRDpadBindingModifier() {
-	ERR_FAIL_COND(dpad_bindings_data.resize_zeroed(sizeof(XrInteractionProfileDpadBindingEXT)) != OK);
+	ERR_FAIL_COND(dpad_bindings_data.resize_initialized(sizeof(XrInteractionProfileDpadBindingEXT)) != OK);
 	dpad_bindings = (XrInteractionProfileDpadBindingEXT *)dpad_bindings_data.ptrw();
 
 	dpad_bindings->type = XR_TYPE_INTERACTION_PROFILE_DPAD_BINDING_EXT;
@@ -122,7 +121,7 @@ OpenXRDpadBindingModifier::OpenXRDpadBindingModifier() {
 	dpad_bindings->isSticky = false;
 }
 
-void OpenXRDpadBindingModifier::set_action_set(const Ref<OpenXRActionSet> p_action_set) {
+void OpenXRDpadBindingModifier::set_action_set(const Ref<OpenXRActionSet> &p_action_set) {
 	action_set = p_action_set;
 }
 
@@ -246,7 +245,7 @@ PackedByteArray OpenXRDpadBindingModifier::get_ip_modification() {
 	ERR_FAIL_COND_V(dpad_bindings->binding == XR_NULL_PATH, PackedByteArray());
 
 	// Get our action set
-	ERR_FAIL_COND_V(!action_set.is_valid(), PackedByteArray());
+	ERR_FAIL_COND_V(action_set.is_null(), PackedByteArray());
 	RID action_set_rid = openxr_api->find_action_set(action_set->get_name());
 	ERR_FAIL_COND_V(!action_set_rid.is_valid(), PackedByteArray());
 	dpad_bindings->actionSet = openxr_api->action_set_get_handle(action_set_rid);

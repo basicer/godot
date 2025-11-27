@@ -30,6 +30,8 @@
 
 #include "timer.h"
 
+#include "core/config/engine.h"
+
 void Timer::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_READY: {
@@ -114,7 +116,7 @@ bool Timer::has_autostart() const {
 }
 
 void Timer::start(double p_time) {
-	ERR_FAIL_COND_MSG(!is_inside_tree(), "Timer was not added to the SceneTree. Either add it or set autostart to true.");
+	ERR_FAIL_COND_MSG(!is_inside_tree(), "Unable to start the timer because it's not inside the scene tree. Either add it or set autostart to true.");
 
 	if (p_time > 0) {
 		set_wait_time(p_time);
@@ -146,7 +148,7 @@ void Timer::set_ignore_time_scale(bool p_ignore) {
 	ignore_time_scale = p_ignore;
 }
 
-bool Timer::get_ignore_time_scale() {
+bool Timer::is_ignoring_time_scale() {
 	return ignore_time_scale;
 }
 
@@ -223,7 +225,7 @@ void Timer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_paused"), &Timer::is_paused);
 
 	ClassDB::bind_method(D_METHOD("set_ignore_time_scale", "ignore"), &Timer::set_ignore_time_scale);
-	ClassDB::bind_method(D_METHOD("get_ignore_time_scale"), &Timer::get_ignore_time_scale);
+	ClassDB::bind_method(D_METHOD("is_ignoring_time_scale"), &Timer::is_ignoring_time_scale);
 
 	ClassDB::bind_method(D_METHOD("is_stopped"), &Timer::is_stopped);
 
@@ -239,11 +241,9 @@ void Timer::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "one_shot"), "set_one_shot", "is_one_shot");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "autostart"), "set_autostart", "has_autostart");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_paused", "is_paused");
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_time_scale"), "set_ignore_time_scale", "get_ignore_time_scale");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_time_scale"), "set_ignore_time_scale", "is_ignoring_time_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "time_left", PROPERTY_HINT_NONE, "suffix:s", PROPERTY_USAGE_NONE), "", "get_time_left");
 
 	BIND_ENUM_CONSTANT(TIMER_PROCESS_PHYSICS);
 	BIND_ENUM_CONSTANT(TIMER_PROCESS_IDLE);
 }
-
-Timer::Timer() {}
